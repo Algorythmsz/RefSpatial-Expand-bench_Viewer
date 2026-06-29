@@ -138,7 +138,36 @@
     h1{font-size:28px;}
     .io-grid{grid-template-columns:1fr;}
     .io-col.input{border-right:none;border-bottom:1px solid var(--rule);}
+    .gallery-wrap{padding-left:18px;padding-right:18px;}
+    .gallery-grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));}
+    .view-bar{padding-left:18px;padding-right:18px;}
   }
+
+  /* View toggle */
+  .view-bar{display:flex;align-items:center;gap:8px;padding:10px 40px;border-bottom:1px solid var(--rule);background:var(--paper);}
+  .view-label{font-family:var(--mono);font-size:9.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--muted);margin-right:4px;}
+  .view-btn{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+            padding:5px 14px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);cursor:pointer;transition:all 0.12s;}
+  .view-btn:hover,.view-btn.active{background:var(--ink);color:var(--paper);}
+
+  /* Gallery */
+  .gallery-wrap{padding:20px 40px 32px;display:none;}
+  .gallery-wrap.visible{display:block;}
+  .gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;}
+  .gcard{border:1px solid var(--rule);background:var(--paper);cursor:pointer;
+         position:relative;overflow:hidden;transition:transform 0.12s,box-shadow 0.12s;}
+  .gcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--step-cl);z-index:2;}
+  .gcard[data-step="1"]{--step-cl:var(--accent-2);}
+  .gcard[data-step="2"]{--step-cl:var(--accent-4);}
+  .gcard[data-step="3"]{--step-cl:var(--accent);}
+  .gcard[data-step="4"]{--step-cl:var(--accent-3);}
+  .gcard[data-step="5"]{--step-cl:var(--accent-5);}
+  .gcard:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,0.12);}
+  .gcard-img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;border-bottom:1px solid var(--rule);}
+  .gcard-meta{padding:9px 11px 9px 15px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+  .gcard-caption{padding:0 11px 10px 15px;font-family:var(--serif);font-style:italic;font-size:12.5px;
+                 color:var(--muted);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .gallery-count{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-bottom:14px;letter-spacing:0.05em;}
 </style>
 </head>
 <body>
@@ -150,6 +179,11 @@
   </header>
 
   <nav class="cat-bar" id="catBar"></nav>
+  <div class="view-bar">
+    <span class="view-label">View</span>
+    <button class="view-btn active" id="viewBrowse">Browse</button>
+    <button class="view-btn" id="viewGallery">Gallery</button>
+  </div>
 
   <main class="stage">
     <div class="stage-meta">
@@ -185,6 +219,11 @@
     </article>
   </main>
 
+  <div class="gallery-wrap" id="galleryWrap">
+    <div class="gallery-count" id="galleryCount"></div>
+    <div class="gallery-grid" id="galleryGrid"></div>
+  </div>
+
   <div class="nav-row">
     <button class="nav-btn" id="prevBtn">← prev</button>
     <span class="nav-pos"><b id="posCur">1</b> / <span id="posTot">10</span></span>
@@ -212,7 +251,7 @@ DATA.forEach((c, i) => {
   const b = document.createElement('button');
   b.className = 'cat-btn'; b.dataset.step = c.step;
   b.innerHTML = `${c.label.replace('·','<span style="opacity:0.5;margin:0 4px;">·</span>')} <span class="ct">${c.samples.length}</span>`;
-  b.addEventListener('click', () => { catIdx = i; sampIdx = 0; render(); });
+  b.addEventListener('click', () => { catIdx = i; sampIdx = 0; navigate(); });
   catBar.appendChild(b);
 });
 
@@ -284,12 +323,65 @@ $('prevBtn').addEventListener('click', () => { if (sampIdx > 0) { sampIdx--; ren
 $('nextBtn').addEventListener('click', () => { if (sampIdx < DATA[catIdx].samples.length - 1) { sampIdx++; render(); } });
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  if (e.key === 'ArrowLeft') { if (sampIdx > 0) { sampIdx--; render(); } e.preventDefault(); }
-  else if (e.key === 'ArrowRight') { if (sampIdx < DATA[catIdx].samples.length - 1) { sampIdx++; render(); } e.preventDefault(); }
-  else if (e.key === 'ArrowUp') { if (catIdx > 0) { catIdx--; sampIdx = 0; render(); } e.preventDefault(); }
-  else if (e.key === 'ArrowDown') { if (catIdx < DATA.length - 1) { catIdx++; sampIdx = 0; render(); } e.preventDefault(); }
-  else if (/^[1-9]$/.test(e.key)) { const n = parseInt(e.key)-1; if (n < DATA.length) { catIdx = n; sampIdx = 0; render(); } e.preventDefault(); }
+  if (e.key === 'ArrowLeft') { if (viewMode === 'browse' && sampIdx > 0) { sampIdx--; render(); } e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { if (viewMode === 'browse' && sampIdx < DATA[catIdx].samples.length - 1) { sampIdx++; render(); } e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { if (catIdx > 0) { catIdx--; sampIdx = 0; navigate(); } e.preventDefault(); }
+  else if (e.key === 'ArrowDown') { if (catIdx < DATA.length - 1) { catIdx++; sampIdx = 0; navigate(); } e.preventDefault(); }
+  else if (/^[1-9]$/.test(e.key)) { const n = parseInt(e.key)-1; if (n < DATA.length) { catIdx = n; sampIdx = 0; navigate(); } e.preventDefault(); }
 });
+
+// ─── Gallery view ───
+let viewMode = 'browse';
+const stageEl = document.querySelector('.stage');
+const navRowEl = document.querySelector('.nav-row');
+const dotsRowEl = document.querySelector('.dots');
+const galleryWrap = document.getElementById('galleryWrap');
+const STEP_CLRS = ['','var(--accent-2)','var(--accent-4)','var(--accent)','var(--accent-3)','var(--accent-5)'];
+
+function renderGallery() {
+  const cat = DATA[catIdx];
+  [...catBar.children].forEach((b, i) => b.classList.toggle('active', i === catIdx));
+  document.getElementById('galleryCount').textContent =
+    cat.label + ' · ' + cat.samples.length + ' sample' + (cat.samples.length !== 1 ? 's' : '');
+  const grid = document.getElementById('galleryGrid');
+  grid.innerHTML = '';
+  cat.samples.forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'gcard';
+    card.dataset.step = cat.step;
+    const cl = STEP_CLRS[cat.step] || 'var(--ink)';
+    card.innerHTML =
+      '<img class="gcard-img" src="data:image/jpeg;base64,' + s.img + '" alt="">' +
+      '<div class="gcard-meta">' +
+        '<span class="tag tag-id">#' + s.id + '</span>' +
+        '<span class="tag">' + s.scene + '</span>' +
+        '<span class="tag" style="background:' + cl + ';color:var(--paper);border-color:' + cl + ';">step·' + cat.step + '</span>' +
+        '<span class="tag tag-split" style="margin-left:auto;">' + (i+1) + '/' + cat.samples.length + '</span>' +
+      '</div>' +
+      '<div class="gcard-caption">' + s.object.replace(/</g,'&lt;') + '</div>';
+    card.addEventListener('click', () => { sampIdx = i; setView('browse'); });
+    grid.appendChild(card);
+  });
+}
+
+function navigate() {
+  if (viewMode === 'gallery') renderGallery(); else render();
+}
+
+function setView(mode) {
+  viewMode = mode;
+  const inBrowse = mode === 'browse';
+  stageEl.style.display = inBrowse ? '' : 'none';
+  navRowEl.style.display = inBrowse ? '' : 'none';
+  dotsRowEl.style.display = inBrowse ? '' : 'none';
+  galleryWrap.classList.toggle('visible', !inBrowse);
+  document.getElementById('viewBrowse').classList.toggle('active', inBrowse);
+  document.getElementById('viewGallery').classList.toggle('active', !inBrowse);
+  if (inBrowse) render(); else renderGallery();
+}
+
+document.getElementById('viewBrowse').addEventListener('click', () => setView('browse'));
+document.getElementById('viewGallery').addEventListener('click', () => setView('gallery'));
 render();
 </script>
 </body>
